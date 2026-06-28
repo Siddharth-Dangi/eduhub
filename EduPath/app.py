@@ -177,6 +177,8 @@ if "learner_tier" not in st.session_state:
     st.session_state.learner_tier = None
 if "pass_prob" not in st.session_state:
     st.session_state.pass_prob = None
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -193,6 +195,12 @@ st.markdown("""
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Control Panel")
+    
+    st.markdown("#### API Key")
+    api_key_input = st.text_input("Groq API Key", type="password", placeholder="gsk_...", value=st.session_state.api_key)
+    if api_key_input:
+        st.session_state.api_key = api_key_input
+        
     st.markdown("---")
 
     if st.session_state.learner_tier:
@@ -430,10 +438,14 @@ with tab_coach:
 
             with st.spinner("EduPulse is thinking…"):
                 try:
+                    if not st.session_state.get("api_key"):
+                        st.error("⚠️ Please enter your Groq API Key in the sidebar.")
+                        st.stop()
                     updated_history = tutor_chat(
                         user_message=prompt,
                         learner_tier=st.session_state.learner_tier,
                         pass_probability=st.session_state.pass_prob,
+                        api_key=st.session_state.api_key,
                         history=st.session_state.chat_history,
                     )
                     st.session_state.chat_history = updated_history
@@ -441,7 +453,7 @@ with tab_coach:
                     if ai_msgs:
                         st.chat_message("assistant", avatar="⚡").write(ai_msgs[-1].content)
                 except Exception as exc:
-                    st.error(f"⚠️ Could not reach the AI tutor: {exc}\n\nMake sure `GROQ_API_KEY` is set in your `.env` file.")
+                    st.error(f"⚠️ Could not reach the AI tutor: {exc}\n\nMake sure your Groq API key is valid.")
 
         # Clear button
         if st.session_state.chat_history:

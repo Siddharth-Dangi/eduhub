@@ -50,19 +50,9 @@ TOOLS = [fetch_study_material]
 
 
 # ---------------------------------------------------------------------------
-# LLM setup
+# LLM setup (Dynamic per-request)
 # ---------------------------------------------------------------------------
 
-
-def _build_llm() -> ChatGroq:
-    key = os.getenv("GROQ_API_KEY", "")
-    if not key or key == "your_groq_api_key_here":
-        print("[TutorAgent] ⚠️  GROQ_API_KEY not set — please add it to your .env file.")
-    return ChatGroq(temperature=0.6, model_name="llama-3.3-70b-versatile")
-
-
-_llm = _build_llm()
-_llm_with_tools = _llm.bind_tools(TOOLS)
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +64,7 @@ class TutorState(TypedDict):
     messages: Annotated[list, add_messages]
     learner_tier: str
     pass_probability: float
+    api_key: str
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +90,16 @@ _TIER_GUIDANCE = {
 def tutor_node(state: TutorState) -> dict:
     """Primary reasoning node — invokes the LLM (with tool access)."""
     msgs = state["messages"]
+    api_key = state.get("api_key", "")
+    
+    if not api_key:
+        return {"messages": [SystemMessage(content="Error: Please provide a Groq API key in the sidebar.")]}
+
+    try:
+        llm = ChatGroq(temperature=0.6, model_name="llama-3.3-70b-versatile", api_key=api_key)
+        llm_with_tools = llm.bind_tools(TOOLS)
+    except Exception as e:
+        return {"messages": [SystemMessage(content=f"Error initializing LLM: {e}")]}
 
     # Prepend a system message once per session
     if not any(isinstance(m, SystemMessage) for m in msgs):
@@ -119,7 +120,7 @@ def tutor_node(state: TutorState) -> dict:
         )
         msgs = [system] + list(msgs)
 
-    response = _llm_with_tools.invoke(msgs)
+    response = llm_with_tools.invoke(msgs)
     return {"messages": [response]}
 
 
@@ -169,6 +170,7 @@ def chat(
     user_message: str,
     learner_tier: str,
     pass_probability: float,
+    api_key: str,
     history: list | None = None,
 ) -> list:
     """
@@ -178,6 +180,7 @@ def chat(
         user_message: The student's latest input.
         learner_tier: ML-derived tier label ("Struggling", "Developing", "Excelling").
         pass_probability: Predicted probability of passing (0–1).
+        api_key: Groq API key from user input.
         history: Prior message list to maintain session continuity.
 
     Returns:
@@ -188,6 +191,7 @@ def chat(
         "messages": history + [HumanMessage(content=user_message)],
         "learner_tier": learner_tier,
         "pass_probability": pass_probability,
+        "api_key": api_key,
     }
     result = tutor_executor.invoke(initial_state)
     return result["messages"]
